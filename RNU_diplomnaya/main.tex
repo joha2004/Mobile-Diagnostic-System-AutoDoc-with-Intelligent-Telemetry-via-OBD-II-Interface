@@ -1,0 +1,177 @@
+%!TEX program = xelatex
+% ============================================================
+% AI Auto Doctor — Bachelor's Thesis
+% Riga Nordic University, Information Systems (BSc)
+% Compliant with RNU thesis template requirements
+% ============================================================
+\documentclass[12pt,a4paper,oneside]{report}
+
+% ── Core packages
+\usepackage{fontspec}           % XeLaTeX font selection
+\usepackage{geometry}           % Page margins
+\usepackage{setspace}           % Line spacing
+\usepackage{parskip}            % Paragraph spacing
+\usepackage{indentfirst}        % Indent first paragraph of each section
+
+% ── Margins: RNU standard (left 35mm, right 20mm, top/bottom 25mm)
+\geometry{
+  a4paper,
+  left   = 35mm,
+  right  = 20mm,
+  top    = 25mm,
+  bottom = 25mm,
+  includehead,
+  includefoot
+}
+
+% ── Font: Liberation Serif (Times New Roman metric compatible, full Unicode)
+\setmainfont{Liberation Serif}[
+  BoldFont       = {Liberation Serif Bold},
+  ItalicFont     = {Liberation Serif Italic},
+  BoldItalicFont = {Liberation Serif Bold Italic}
+]
+\setmonofont{DejaVu Sans Mono}[Scale=0.85]
+
+% ── Line spacing: 1.5 throughout
+\setstretch{1.5}
+
+% ── Language
+\usepackage{polyglossia}
+\setdefaultlanguage{english}
+
+% ── Bibliography
+\usepackage[numbers,sort&compress]{natbib}
+\bibliographystyle{unsrtnat}
+
+% ── Hyperlinks (clickable TOC, cross-references)
+\usepackage[
+  colorlinks = true,
+  linkcolor  = {blue!60!black},
+  citecolor  = {blue!60!black},
+  urlcolor   = {blue!60!black},
+  bookmarks  = true,
+  pdfusetitle
+]{hyperref}
+
+% ── Tables
+\usepackage{booktabs}           % Professional table rules
+\usepackage{tabularx}           % Auto-width columns
+\usepackage{longtable}          % Multi-page tables
+\usepackage{array}              % Extended column types
+\usepackage{multirow}           % Merged cells
+\usepackage[table,xcdraw]{xcolor} % Row colours
+\definecolor{tblhdr}{RGB}{31,56,100}
+\definecolor{tblalt}{RGB}{238,242,248}
+
+% ── Figures
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{caption}
+\captionsetup{
+  font        = {small},
+  labelfont   = bf,
+  skip        = 6pt,
+  justification = centering
+}
+
+% ── Mathematics
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+% ── Lists
+\usepackage{enumitem}
+\setlist[itemize]{noitemsep, topsep=4pt, leftmargin=2em}
+\setlist[enumerate]{noitemsep, topsep=4pt, leftmargin=2em}
+
+% ── Code listings
+\usepackage{listings}
+\lstset{
+  basicstyle   = \ttfamily\small,
+  breaklines   = true,
+  frame        = single,
+  numbers      = left,
+  numberstyle  = \tiny,
+  stepnumber   = 1,
+  tabsize      = 2,
+  captionpos   = b
+}
+
+% ── Page header / footer
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textit{AI Auto Doctor}}
+\fancyhead[R]{\small\textit{\leftmark}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ── Chapter / section headings style
+\usepackage{titlesec}
+\titleformat{\chapter}[block]
+  {\centering\large\bfseries\MakeUppercase}
+  {CHAPTER \thechapter.~}
+  {0pt}
+  {}
+\titleformat{\section}
+  {\bfseries\large}
+  {\thesection.~}
+  {0pt}
+  {}
+\titleformat{\subsection}
+  {\bfseries\normalsize}
+  {\thesubsection.~}
+  {0pt}
+  {}
+\titlespacing{\chapter}{0pt}{0pt}{20pt}
+\titlespacing{\section}{0pt}{14pt}{8pt}
+\titlespacing{\subsection}{0pt}{10pt}{6pt}
+
+% ── TOC depth
+\setcounter{tocdepth}{3}
+\setcounter{secnumdepth}{3}
+
+% ── Placeholder figure command
+\newcommand{\figplaceholder}[2]{%
+  \begin{figure}[!htbp]
+    \centering
+    \fbox{\parbox{0.72\linewidth}{\centering\vspace{1.2cm}
+      \textit{[FIGURE PLACEHOLDER]}\\[4pt]
+      \small\textit{#1}%
+      \vspace{1.2cm}
+    }}
+    \caption{#1}
+    \label{#2}
+  \end{figure}%
+}
+
+% ── Confidence formula helper
+\newcommand{\conf}{C_{\mathrm{score}}}
+
+% ============================================================
+\begin{document}
+% ============================================================
+
+% ────────────────────────────────────────────────────────────
+\input{frontmatter/titlepage}
+\input{frontmatter/abstract}
+
+\tableofcontents
+\clearpage
+\listoffigures
+\listoftables
+\clearpage
+
+% ────────────────────────────────────────────────────────────
+\input{chapters/introduction}
+\input{chapters/chapter1}
+\input{chapters/chapter2}
+\input{chapters/chapter3}
+\input{chapters/conclusions}
+
+% ────────────────────────────────────────────────────────────
+\bibliography{references}
+
+\appendix
+\input{appendix/appendixA}
+
+\end{document}

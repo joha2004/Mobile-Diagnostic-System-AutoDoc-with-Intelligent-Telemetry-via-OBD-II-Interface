@@ -1,0 +1,123 @@
+\chapter*{Introduction}
+\addcontentsline{toc}{chapter}{Introduction}
+\markboth{Introduction}{Introduction}
+
+\section*{Topicality of the Problem}
+\addcontentsline{toc}{section}{Topicality of the Problem}
+
+The global automotive diagnostics market was valued at approximately 43~billion USD in~2023 and is forecast to grow at a compound annual rate of~8.2\,\% through~2030~\cite{markets2023}.
+A key catalyst is the proliferation of low-cost Bluetooth OBD-II adapters based on the ELM327 microcontroller, which can transform any modern smartphone into a diagnostic instrument for less than 30~USD.
+Despite this democratisation of hardware access, the software interpretation layer has not advanced proportionally.
+
+When an Electronic Control Unit (ECU) detects a fault condition, it stores a standardised Diagnostic Trouble Code (DTC) as defined by SAE~J1979 and activates the malfunction indicator lamp.
+Retrieving the code via an ELM327 adapter is technically straightforward.
+Accurately interpreting it is not.
+A single code such as P0171 (\textit{Fuel System Too Lean, Bank~1}) may be caused by a vacuum leak in the intake manifold, a contaminated Mass Airflow (MAF) sensor, insufficient fuel pump pressure, or a failed upstream oxygen sensor---each requiring a fundamentally different repair strategy with costs ranging from negligible to several hundred euros.
+
+Two categories of solutions currently dominate the market.
+Traditional OBD readers (e.g., Torque~Pro, Car Scanner~ELM OBD2, OBD Auto~Doctor) successfully retrieve and display fault codes but provide only generic textual descriptions sourced from lookup tables.
+They perform no analysis of which specific cause applies to the vehicle under current operating conditions.
+AI-augmented tools represent a newer category that addresses the explanation problem; however, they introduce a different failure mode: without access to live sensor readings, large language models (LLMs) produce responses based on their training-set statistics rather than measured vehicle evidence.
+A controlled experiment conducted during this research confirmed a cause identification accuracy of only 61\,\% and result consistency of 58\,\% for the direct AI-only approach across three DTC scenarios~\cite{zhang2024gpt}.
+
+This thesis addresses the identified gap by proposing and implementing a \textbf{two-stage diagnostic pipeline}: a deterministic Rule-Based engine verifies the fault cause against live OBD-II sensor data in Stage~1, and generative AI is invoked exclusively in Stage~2 to explain the pre-verified result.
+
+\section*{Aim of the Study}
+\addcontentsline{toc}{section}{Aim of the Study}
+
+The aim of this thesis is to design, implement, and experimentally validate a cross-platform mobile diagnostic application---\textit{AI Auto Doctor}---that realises a two-stage analysis pipeline combining deterministic rule-based sensor verification with generative AI explanation, thereby achieving measurably higher diagnostic accuracy, result consistency, and user explainability than existing AI-only or traditional OBD approaches.
+
+\section*{Object and Subject of the Study}
+\addcontentsline{toc}{section}{Object and Subject of the Study}
+
+\textbf{Object of the study:} Cross-platform mobile application development for automotive vehicle diagnostics using OBD-II sensor data, rule-based diagnostic algorithms, and generative AI.
+
+\textbf{Subject of the study:} A two-stage diagnostic pipeline combining a deterministic Rule-Based \texttt{DiagnosticEngine} with Google Gemini~1.5~Flash AI, implemented as a Flutter mobile application with BLE OBD-II connectivity, real-time LiveData processing, and structured JSON response format.
+
+\section*{Research Problem and Hypothesis}
+\addcontentsline{toc}{section}{Research Problem and Hypothesis}
+
+\textbf{Research problem:} No widely available mobile diagnostic solution implements a structured verification layer that cross-validates DTC codes against live sensor readings before engaging AI explanation, leaving drivers without reliable, actionable, sensor-grounded diagnostic information.
+
+\textbf{Hypothesis:}
+\begin{quote}
+\itshape
+If a rule-based engine first verifies the fault cause against live OBD-II sensor data---including STFT, LTFT, MAF, O2 sensor voltage, coolant temperature, and FreezeFrame snapshot---and generative AI is invoked only with the pre-verified \texttt{DiagnosticResult} as context rather than a raw DTC code, then the resulting two-stage pipeline will achieve statistically significant improvements in cause identification accuracy, result consistency, and user-perceived explainability compared to direct AI-only output.
+\end{quote}
+
+\section*{Tasks of the Study}
+\addcontentsline{toc}{section}{Tasks of the Study}
+
+The following tasks are defined to achieve the stated aim:
+
+\begin{enumerate}
+  \item Conduct a systematic literature review of the OBD-II standard, ELM327 protocol,
+        existing mobile diagnostic applications, and AI-based diagnostic approaches
+        to identify the research gap (Chapter~\ref{ch:litreview}).
+  \item Design the three-layer system architecture (Presentation / Domain / Data) and
+        specify the \texttt{DiagnosticEngine} rule sets, \texttt{HealthScoreCalculator},
+        BLE communication protocol, SQLite data model, and Gemini AI integration
+        (Chapter~\ref{ch:architecture}).
+  \item Implement all functional capabilities across eight application screens and
+        conduct functional, comparative, and performance testing
+        (Chapter~\ref{ch:implementation}).
+  \item Verify the research hypothesis through a controlled comparative experiment
+        measuring cause accuracy, result consistency, and user explainability for
+        AI-Only vs.\ Rule+AI approaches (Chapter~\ref{ch:implementation}).
+  \item Formulate conclusions that directly address each task and assess the practical
+        and scientific significance of the results.
+\end{enumerate}
+
+\begin{table}[!htbp]
+\centering
+\caption{Mapping of research tasks to thesis chapters}
+\label{tab:tasks}
+\rowcolors{2}{tblalt}{white}
+\begin{tabularx}{0.95\linewidth}{>{\bfseries}c p{9cm} X}
+\toprule
+\rowcolor{tblhdr}
+\color{white}\textbf{Task} &
+\color{white}\textbf{Description} &
+\color{white}\textbf{Chapter} \\
+\midrule
+1 & Literature review and research gap identification & Chapter~1 \\
+2 & System architecture and component design         & Chapter~2 \\
+3 & Implementation and multi-level testing           & Chapter~3 \\
+4 & Comparative experiment and hypothesis verification& Chapter~3 \\
+5 & Conclusions and significance assessment          & Conclusions \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section*{Research Methods}
+\addcontentsline{toc}{section}{Research Methods}
+
+The methodological basis of this thesis comprises the following approaches:
+
+\begin{itemize}
+  \item \textbf{Systematic literature review} of automotive diagnostics standards
+        (SAE~J1979~\cite{sae2020}, ISO~15765-4~\cite{iso2021}), ELM327 AT command
+        protocol~\cite{elm2019}, mobile development frameworks, and AI diagnostic
+        literature.
+  \item \textbf{Comparative analysis} of twelve existing mobile OBD-II diagnostic
+        applications to identify capability gaps.
+  \item \textbf{Experimental comparison} of two diagnostic methods on three DTC
+        scenarios (P0171, P0300, P0420), each evaluated in three repeated runs by five
+        automotive domain experts.
+  \item \textbf{Iterative Agile development} using a demo simulation environment
+        (\texttt{DemoObdSource}) replicating a Volkswagen Passat~2019~1.4~TSI sensor
+        profile.
+  \item \textbf{User Acceptance Testing (UAT)} of ten functional requirements on
+        Android~14 (Samsung Galaxy~A54) and iOS~17 (Apple iPhone~13).
+\end{itemize}
+
+\section*{Thesis Structure}
+\addcontentsline{toc}{section}{Thesis Structure}
+
+The thesis is structured as follows.
+Chapter~1 provides the theoretical background: OBD-II standard, ELM327 protocol, DTC code structure, analysis of existing diagnostic applications, review of AI and Rule-Based diagnostic approaches, and justification of the Flutter framework.
+Chapter~2 presents the system architecture and detailed technical design of all system components.
+Chapter~3 describes the implementation of functional capabilities and reports results from functional testing, the comparative hypothesis validation experiment, performance benchmarking, and a STRIDE security analysis.
+The Conclusions section addresses each research task and assesses scientific and practical significance.
+
+\clearpage

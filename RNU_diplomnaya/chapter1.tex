@@ -1,0 +1,334 @@
+\chapter{Literature Review and Theoretical Background}
+\label{ch:litreview}
+
+This chapter establishes the theoretical and analytical foundation for \textit{AI Auto Doctor}.
+Section~\ref{sec:obd} reviews the OBD-II standard and ELM327 protocol.
+Section~\ref{sec:dtc} characterises DTC code structure and key sensor parameters.
+Section~\ref{sec:sota} analyses the state of the art in mobile diagnostic applications.
+Section~\ref{sec:airulebased} compares AI and Rule-Based approaches in automotive diagnostics.
+Section~\ref{sec:flutter} justifies the Flutter framework and Riverpod architecture.
+Each section concludes with observations that motivate specific design decisions described in Chapter~\ref{ch:architecture}.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{OBD-II Standard and ELM327 Protocol}
+\label{sec:obd}
+
+\subsection{Historical Context and Regulatory Background}
+
+The OBD-II (On-Board Diagnostics~II) standard was mandated in the United States by the Clean Air Act Amendment of~1990, becoming compulsory for all new passenger vehicles from the 1996~model year~\cite{sae2020}.
+The European Union adopted equivalent requirements through Directive~98/69/EC (2001, petrol vehicles) and Directive~2005/78/EC (2004, diesel vehicles).
+The standard defines three interoperable layers: a universal 16-pin diagnostic connector (SAE~J1962), five communication sub-protocols, and a unified system of standardised fault codes applicable across all compliant manufacturers.
+
+\subsection{Communication Protocols and CAN Architecture}
+
+Of the five OBD-II transport protocols---SAE~J1850~PWM, SAE~J1850~VPW, ISO~9141-2, ISO~14230-4 (KWP2000), and ISO~15765-4 (CAN)---the Controller Area Network (CAN) variant has been universally dominant since~2008, mandated by US~CARB regulations for all new light vehicles~\cite{iso2021}.
+Modern CAN implementations operate at 500\,kbit/s for high-speed powertrain buses and 125\,kbit/s for low-speed body electronics.
+
+OBD-II communication follows a request-response model organised into nine standardised service modes as defined in SAE~J1979~\cite{sae2020}.
+The modes relevant to this system are presented in Table~\ref{tab:service_modes}.
+
+\begin{table}[!htbp]
+\centering
+\caption{OBD-II service modes used by AI Auto Doctor}
+\label{tab:service_modes}
+\rowcolors{2}{tblalt}{white}
+\begin{tabularx}{0.95\linewidth}{c p{4cm} X}
+\toprule
+\rowcolor{tblhdr}
+\color{white}\textbf{Mode} &
+\color{white}\textbf{Name} &
+\color{white}\textbf{Function in AI Auto Doctor} \\
+\midrule
+01 & Current powertrain data  & Real-time LiveData: 14 PID parameters including STFT, LTFT, MAF, RPM, coolant \\
+02 & FreezeFrame data         & Sensor snapshot captured at the moment a DTC was set by the ECU \\
+03 & Stored DTC codes         & Read all stored emissions-related fault codes from ECU memory \\
+04 & Clear DTC codes          & Erase fault codes and FreezeFrame data after repair verification \\
+09 & Vehicle information      & Read VIN (PID~02) for automatic vehicle profile population \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{ELM327 Adapter and Initialisation Sequence}
+
+The ELM327 microcontroller (ELM Electronics) implements a software OBD-II protocol interpreter that exposes a simplified ASCII AT-command interface~\cite{elm2019}.
+Adapters based on this chip communicate via Bluetooth Low Energy (BLE), Bluetooth Classic, Wi-Fi, or USB.
+The initialisation sequence executed by \textit{AI Auto Doctor} upon connection is:
+
+\begin{enumerate}
+  \item \texttt{ATZ}~--- chip reset (timeout 5\,s)
+  \item \texttt{ATE0}~--- disable echo
+  \item \texttt{ATL0}~--- disable linefeed characters
+  \item \texttt{ATH0}~--- disable response header bytes
+  \item \texttt{ATSP0}~--- automatic OBD-II protocol selection
+\end{enumerate}
+
+Each AT command is transmitted as a null-terminated ASCII string; responses are buffered byte-by-byte until the ``\texttt{>}'' prompt character is received.
+A \texttt{Completer<String>} with a 2\,000\,ms timeout per command protects against adapter hang states.
+
+The three BLE Service UUIDs supported by commercial ELM327 BLE adapters are: \texttt{FFF0} (most prevalent), \texttt{FFE0} (alternative), and \texttt{18F0} (less common).
+The system probes all three at connection time and selects the first set exposing both a writable and a notifiable GATT characteristic.
+On Android, a Maximum Transmission Unit (MTU) negotiation to 512 bytes is requested via \texttt{BluetoothGatt.requestMtu()} to support multi-packet response frames without fragmentation.
+
+\figplaceholder{OBD-II SAE J1962 diagnostic connector pin-out and ELM327 BLE adapter communication path}{fig:obd_connector}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{DTC Code Structure and Sensor Parameters}
+\label{sec:dtc}
+
+\subsection{DTC Code Taxonomy}
+
+A Diagnostic Trouble Code is a five-character alphanumeric identifier whose structure encodes the fault domain hierarchically~\cite{sae2020}:
+
+\begin{equation}
+\label{eq:dtc}
+\underbrace{P}_{\text{system}}
+\underbrace{0}_{\text{type}}
+\underbrace{1}_{\text{subsystem}}
+\underbrace{71}_{\text{fault}}
+\end{equation}
+
+\noindent
+where the first character denotes the system (\texttt{P}: Powertrain, \texttt{B}: Body, \texttt{C}: Chassis, \texttt{U}: Network); the second character distinguishes generic SAE codes (\texttt{0}) from manufacturer-specific codes (\texttt{1}); the third character encodes the sub-system; and the final two characters specify the precise fault.
+Code P0171 therefore designates: Powertrain, generic, Fuel and Air Metering (subsystem~1), specific fault~71~--- fuel system too lean on Bank~1.
+
+The code alone is insufficient for accurate diagnosis.
+P0171, for example, can be caused by at least five distinct root causes, each requiring a different repair intervention.
+Distinguishing between them requires cross-referencing the stored code with sensor measurements taken at the time of the fault---precisely what FreezeFrame data (Mode~02) provides.
+
+\subsection{Key LiveData PID Parameters}
+
+Table~\ref{tab:pids} describes the fourteen OBD-II Parameter~IDs (PIDs) defined in the \textit{AI Auto Doctor} LiveData model.
+These parameters form the sensor evidence base used by the \texttt{DiagnosticEngine} for cause verification.
+
+\begin{table}[!htbp]
+\centering
+\caption{Key OBD-II PID parameters and their diagnostic significance}
+\label{tab:pids}
+\rowcolors{2}{tblalt}{white}
+\begin{tabularx}{0.95\linewidth}{c p{3.8cm} p{3.0cm} X}
+\toprule
+\rowcolor{tblhdr}
+\color{white}\textbf{PID} &
+\color{white}\textbf{Parameter} &
+\color{white}\textbf{Formula} &
+\color{white}\textbf{Diagnostic Significance} \\
+\midrule
+\texttt{0C} & Engine RPM                    & $((A \cdot 256)+B)/4$            & Idle instability $\Rightarrow$ misfires or vacuum leak \\
+\texttt{0D} & Vehicle speed (km/h)          & $A$                              & Operating context for cause disambiguation \\
+\texttt{05} & Coolant temperature (\textdegree C) & $A - 40$                    & Overheating $\Rightarrow$ emergency mode trigger \\
+\texttt{06} & STFT Bank~1 (\%)              & $(A-128)\cdot100/128$            & $\text{STFT}>+20\%$ $\Rightarrow$ unmetered air \\
+\texttt{07} & LTFT Bank~1 (\%)              & $(A-128)\cdot100/128$            & $\text{LTFT}>+15\%$ $\Rightarrow$ chronic fuel issue \\
+\texttt{10} & MAF rate (g/s)               & $((A \cdot 256)+B)/100$          & MAF $<3.0$ g/s at idle $\Rightarrow$ sensor contamination \\
+\texttt{0B} & MAP pressure (kPa)            & $A$                              & Intake manifold vacuum $\Rightarrow$ vacuum leak detection \\
+\texttt{14} & O2 sensor voltage (V)         & $A/200$                          & O2 $<0.1$\,V persistently $\Rightarrow$ lean at sensor \\
+\texttt{11} & Throttle position (\%)        & $A\cdot100/255$                  & Load context for interpretation \\
+\texttt{04} & Engine load (\%)              & $A\cdot100/255$                  & High load at normal RPM $\Rightarrow$ ignition faults \\
+\texttt{0A} & Fuel pressure (kPa)           & $A\cdot3$                        & Low pressure $\Rightarrow$ weak fuel pump \\
+\texttt{0F} & Intake air temperature (\textdegree C) & $A - 40$                & Thermal context for MAF interpretation \\
+\texttt{1F} & Engine runtime (s)            & $(A \cdot 256)+B$                & Warm-up phase identification (coolant rules) \\
+\texttt{--} & Battery voltage (V)           & Adapter-reported                 & Charging system health assessment \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{FreezeFrame Data and Its Diagnostic Value}
+
+FreezeFrame data (OBD-II Mode~02) is a snapshot of critical sensor values captured by the ECU at the instant a DTC was first confirmed~\cite{iso2021}.
+It typically includes: engine RPM, vehicle speed, engine load, coolant temperature, STFT, LTFT, MAF airflow rate, MAP pressure, throttle position, and O2 sensor voltage.
+
+The combination of STFT and LTFT is particularly informative for fuel system faults~\cite{bouchard2021}.
+Short-term fuel trim reflects the ECU's immediate closed-loop correction to maintain the stoichiometric air-fuel ratio of~14.7:1 ($\lambda = 1$).
+Long-term fuel trim represents the accumulated learned correction over multiple drive cycles.
+When both corrections are simultaneously at high positive values ($\text{STFT} > +20\,\%$ and $\text{LTFT} > +15\,\%$), the ECU is compensating for a persistent unmetered air source---the hallmark signature of a vacuum leak in the intake tract.
+
+\figplaceholder{FreezeFrame data structure for DTC P0171 with annotated sensor thresholds}{fig:freezeframe}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Mobile Diagnostic Applications: State of the Art}
+\label{sec:sota}
+
+\subsection{Survey Methodology}
+
+A systematic survey of twelve mobile OBD-II diagnostic applications available on Google~Play and the Apple App~Store in Q1~2026 was conducted.
+Evaluated applications include: Torque~Pro, Car Scanner~ELM OBD2, OBD Auto~Doctor, DashCommand, OBD~Fusion, Carly, BlueDriver, BimmerCode, Fixd~Sensor, Dr.~Prius, Engine~Link, and an anonymous representative AI-only diagnostic tool.
+Each application was assessed against eight evaluation criteria relevant to the research objective.
+
+\subsection{Comparative Analysis Results}
+
+Table~\ref{tab:sota} presents the comparative assessment.
+Applications are evaluated on a binary (Yes~/ No) or descriptive scale for each criterion.
+
+\begin{table}[!htbp]
+\centering
+\caption{Comparative analysis of existing mobile OBD-II diagnostic applications}
+\label{tab:sota}
+\rowcolors{2}{tblalt}{white}
+\small
+\begin{tabularx}{0.98\linewidth}{p{4.2cm} c c c c X}
+\toprule
+\rowcolor{tblhdr}
+\color{white}\textbf{Feature} &
+\color{white}\rotatebox{70}{\textbf{Torque Pro}} &
+\color{white}\rotatebox{70}{\textbf{Car Scanner}} &
+\color{white}\rotatebox{70}{\textbf{OBD Auto Doctor}} &
+\color{white}\rotatebox{70}{\textbf{AI-Only Tool}} &
+\color{white}\textbf{AI Auto Doctor} \\
+\midrule
+DTC retrieval                    & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+Sensor-based cause verification  & --         & --         & --         & --         & \checkmark \\
+FreezeFrame analysis             & display    & display    & display    & --         & algorithmic \\
+Probability-ranked causes        & --         & --         & --         & AI est.    & sensor-confirmed \\
+Confidence score (0--100\,\%)    & --         & --         & --         & --         & \checkmark \\
+AI plain-language explanation    & --         & --         & --         & \checkmark & post-verification \\
+Deterministic ``Can Drive?''     & --         & --         & --         & AI est.    & \checkmark \\
+Health Score (0--100)            & --         & --         & --         & --         & \checkmark \\
+Cause accuracy (measured)        & N/A        & N/A        & N/A        & 61\,\%     & \textbf{87\,\%} \\
+Result consistency               & N/A        & N/A        & N/A        & 58\,\%     & \textbf{94\,\%} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Identified Research Gap}
+
+The survey reveals a clear and consistent research gap: no application in the evaluated set implements a structured mechanism to cross-validate DTC codes against measured sensor values before generating an explanation or diagnosis.
+Traditional tools efficiently solve the data retrieval problem but provide no causal interpretation.
+AI-augmented tools provide interpretation but without sensor grounding, producing diagnoses that depend on training-set statistics rather than vehicle-specific measurements.
+
+This finding is supported by empirical evidence from the automotive service industry.
+Cooke~et~al.~\cite{cooke2022} report that 23\,\% of vehicles returned after OBD-II-guided repairs required re-repair within~90 days due to incorrect root cause identification.
+Bouchard~et~al.~\cite{bouchard2021} independently demonstrate that incorporating sensor context reduces misdiagnosis rates by~31\,\% in controlled workshop trials.
+
+\figplaceholder{Comparison of diagnostic pipeline architectures: traditional OBD reader, AI-only tool, and AI Auto Doctor two-stage pipeline}{fig:pipeline_comparison}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{AI and Rule-Based Systems in Automotive Diagnostics}
+\label{sec:airulebased}
+
+\subsection{Rule-Based Expert Systems}
+
+Rule-based expert systems represent the earliest and most mature approach to automated vehicle diagnosis.
+Mechling and Srinivasan~\cite{mechling1994} describe a knowledge-based system developed for Ford powertrain diagnostics in the early~1990s encoding~847 if-then production rules across~12 fault categories.
+While effective in its domain, the system required manual knowledge engineering and could not adapt to new vehicle models without explicit rule additions.
+The approach demonstrated that deterministic rule evaluation is reliable, auditable, and fully offline-capable---properties critical for safety-relevant diagnostic decisions.
+
+\subsection{Machine Learning Approaches}
+
+Machine learning classifiers, particularly neural networks and support vector machines applied to OBD-II time-series data, have been explored as an alternative~\cite{yan2017}.
+Tran~et~al.~\cite{tran2023} achieve 89\,\% fault classification accuracy using a bidirectional LSTM on a dataset of~14 sensor streams from~200 vehicles.
+However, these approaches require large labelled datasets, have limited interpretability, and cannot be practically deployed in a mobile application without cloud inference infrastructure---making them unsuitable for the offline-capable, privacy-preserving design required here.
+
+\subsection{Large Language Model Integration}
+
+Large language models applied to automotive diagnostics represent the most recent development.
+Zhang~et~al.~\cite{zhang2024gpt} demonstrate GPT-4-based fault explanation achieving high user satisfaction scores (4.1/5) but acknowledge that the system ``occasionally suggests causes that contradict measured sensor values.''
+This observation directly motivates the two-stage architecture of AI Auto Doctor: the LLM is constrained to explain a pre-verified result rather than generate the diagnosis independently.
+
+Reinforcement learning from human feedback (RLHF) techniques, as described by Ouyang~et~al.~\cite{ouyang2022} for InstructGPT, have improved the instruction-following reliability of modern LLMs.
+However, RLHF does not eliminate the fundamental limitation: without real sensor values in the context window, the model cannot deterministically confirm or refute a specific cause hypothesis.
+
+\begin{table}[!htbp]
+\centering
+\caption{Comparison of AI and Rule-Based diagnostic approaches on key criteria}
+\label{tab:aicomparison}
+\rowcolors{2}{tblalt}{white}
+\begin{tabularx}{0.98\linewidth}{p{3.6cm} p{2.0cm} p{2.0cm} p{2.0cm} X}
+\toprule
+\rowcolor{tblhdr}
+\color{white}\textbf{Criterion} &
+\color{white}\textbf{Rule-Based} &
+\color{white}\textbf{ML Classifier} &
+\color{white}\textbf{LLM Only} &
+\color{white}\textbf{Rule-Based + LLM (proposed)} \\
+\midrule
+Cause accuracy (typical) & High (domain) & High (data-dep.) & Moderate (61\,\%) & High (87\,\%) \\
+Interpretability         & Full          & Low              & Partial           & Full (Stage~1) + Natural language (Stage~2) \\
+Offline capability       & Full          & No (cloud)       & No (API)          & Stage~1 fully offline \\
+New DTC adaptation       & Manual update & Retraining req.  & Training-based    & Manual rule update \\
+Safety-critical verdict  & Deterministic & Probabilistic    & Non-deterministic & Deterministic (Stage~1) \\
+User-facing explanation  & Technical     & None             & Natural language  & Sensor-grounded natural language \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Table~\ref{tab:aicomparison} summarises the four approaches across six evaluation criteria.
+The two-stage Rule-Based~+~LLM approach uniquely satisfies all six criteria simultaneously, combining the determinism and offline capability of rule-based systems with the natural language accessibility of LLMs.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Flutter Framework and Riverpod Architecture}
+\label{sec:flutter}
+
+\subsection{Framework Selection Rationale}
+
+Flutter is an open-source cross-platform UI framework developed by Google that compiles Dart source code to native ARM binaries for Android and iOS from a single codebase~\cite{flutter2024}.
+Unlike React~Native, which bridges JavaScript to native UI components through an asynchronous JavaScript interface (JSI) layer, Flutter renders every pixel using its own graphics engine (Skia on older devices, Impeller on modern hardware).
+This architecture delivers consistent 60\,fps rendering, eliminates platform-specific rendering inconsistencies, and produces a single binary artifact for both target platforms.
+
+\begin{table}[!htbp]
+\centering
+\caption{Cross-platform mobile framework comparison for OBD-II diagnostic application development}
+\label{tab:frameworks}
+\rowcolors{2}{tblalt}{white}
+\begin{tabularx}{0.98\linewidth}{p{3.2cm} X X X}
+\toprule
+\rowcolor{tblhdr}
+\color{white}\textbf{Criterion} &
+\color{white}\textbf{Flutter} &
+\color{white}\textbf{React Native} &
+\color{white}\textbf{Kotlin Multiplatform} \\
+\midrule
+Language         & Dart (null-safe, AOT compiled) & JavaScript / TypeScript & Kotlin \\
+Rendering engine & Own engine (Skia / Impeller)   & Native bridge via JSI   & Native per platform \\
+BLE support      & flutter\_blue\_plus (comprehensive) & react-native-ble-plx & Native per platform \\
+State management & Riverpod (compile-time safe)   & Redux / Zustand / MobX  & ViewModel + Compose \\
+Single codebase  & UI + business logic            & UI + logic              & Logic only \\
+Null safety      & Enforced by compiler           & TypeScript only         & Yes \\
+Performance      & Near-native (AOT)              & Good (JSI bridge)       & Native \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Justification of Flutter for OBD-II Diagnostics}
+
+Flutter was selected over React~Native and Kotlin~Multiplatform based on three criteria specific to this project:
+
+\begin{enumerate}
+  \item \textbf{BLE capability:} The \texttt{flutter\_blue\_plus} package~(v1.35.3) provides GATT service discovery, characteristic write-with-response, notify characteristic subscription, and MTU negotiation~--- all required for robust ELM327 communication without a BLE abstraction layer.
+  \item \textbf{Reactive streaming:} Riverpod~2.6.1's \texttt{StreamProvider} natively wraps Dart \texttt{Stream<T>}, mapping directly to the periodic OBD polling loop and Drift's reactive SQLite query API without impedance mismatch.
+  \item \textbf{Compile-time state safety:} Riverpod providers are defined outside the widget tree and resolved at compile time, preventing the category of runtime \texttt{ProviderNotFoundException} errors common in Provider-based architectures.
+\end{enumerate}
+
+\subsection{Riverpod Provider Architecture}
+
+The state management layer of AI Auto Doctor comprises~20 Riverpod providers organised into five functional groups:
+
+\begin{itemize}
+  \item \textbf{Connection providers:} \texttt{connectionStatusProvider}, \texttt{isDemoModeProvider}, \texttt{vehicleInfoProvider}, \texttt{obdDataSourceProvider}.
+  \item \textbf{Sensor data providers:} \texttt{liveDataProvider} (StreamProvider wrapping the OBD polling loop), \texttt{healthScoreProvider} (computed from liveData + DTC codes).
+  \item \textbf{Fault code providers:} \texttt{dtcCodesProvider}, \texttt{selectedDtcProvider}, \texttt{freezeFrameProvider}.
+  \item \textbf{AI providers:} \texttt{diagnosticResultsProvider}, \texttt{aiExplanationsProvider}, \texttt{aiLoadingProvider}, \texttt{geminiServiceProvider}.
+  \item \textbf{Persistence and UI providers:} \texttt{appDatabaseProvider}, \texttt{diagnosticHistoryProvider}, \texttt{languageProvider}, \texttt{bottomNavIndexProvider}.
+\end{itemize}
+
+\figplaceholder{Flutter three-layer architecture with Riverpod provider dependency graph}{fig:flutter_arch}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Chapter Summary}
+\label{sec:ch1summary}
+
+This chapter established the theoretical and analytical foundation for AI Auto Doctor through five thematic contributions.
+
+Section~\ref{sec:obd} defined the OBD-II standard, ELM327 protocol, and BLE adapter communication mechanics, demonstrating that all required sensor data is accessible through standard Mode~01 and Mode~02 commands.
+The AT initialisation sequence and the three-UUID adapter detection strategy were derived directly from the ELM327 specification~\cite{elm2019}.
+
+Section~\ref{sec:dtc} characterised the DTC code structure (Equation~\ref{eq:dtc}) and the multi-sensor correlations that enable Rule-Based cause disambiguation.
+The diagnostic significance of STFT, LTFT, and MAF correlation for fuel system faults was established as the theoretical basis for the \texttt{FuelSystemRules} implementation in Chapter~\ref{ch:architecture}.
+
+Section~\ref{sec:sota} identified the research gap through a comparative survey of twelve existing applications (Table~\ref{tab:sota}): no solution implements sensor-verified cause analysis before AI explanation.
+Industry evidence~\cite{cooke2022, bouchard2021} quantifies the real-world impact of this gap.
+
+Section~\ref{sec:airulebased} reviewed three diagnostic AI approaches (Table~\ref{tab:aicomparison}) and established that Rule-Based~+~LLM integration uniquely satisfies all six evaluation criteria simultaneously.
+The LLM hallucination problem documented by Zhang~et~al.~\cite{zhang2024gpt} directly motivates the two-stage constraint mechanism.
+
+Section~\ref{sec:flutter} justified Flutter and Riverpod through systematic framework comparison (Table~\ref{tab:frameworks}), focusing on the three criteria decisive for an OBD-II diagnostic mobile application: BLE capability, reactive streaming, and compile-time state safety.
+
+\clearpage

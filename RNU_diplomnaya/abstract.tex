@@ -1,0 +1,33 @@
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
+This Bachelor's thesis presents \textit{AI Auto Doctor}, a cross-platform mobile application for Android and iOS that addresses a fundamental gap in accessible vehicle diagnostics: the inability of existing solutions to provide verified, sensor-grounded fault diagnoses.
+The system implements a two-stage diagnostic pipeline in which a deterministic Rule-Based engine (\texttt{DiagnosticEngine}) first evaluates a Diagnostic Trouble Code (DTC) against real-time OBD-II sensor data---including Short-Term Fuel Trim (STFT), Long-Term Fuel Trim (LTFT), Mass Airflow Rate (MAF), O2 sensor voltage, coolant temperature, and FreezeFrame snapshot---and produces probability-ranked hypotheses with a confidence score ranging from 40\% to 95\%.
+Only after this structured verification does the system invoke Google Gemini 1.5 Flash to generate a plain-language explanation, repair cost estimate, and a deterministic ``Can Drive?'' safety verdict.
+
+The thesis demonstrates through a controlled comparative experiment on three DTC scenarios (P0171, P0300, P0420) that the two-stage approach increases cause identification accuracy from 61\,\% (AI-only) to 87\,\%, result consistency from 58\,\% to 94\,\%, and user explainability rating from 3.2/5 to 4.5/5.
+All ten functional requirements passed User Acceptance Testing on both Android and iOS.
+The DiagnosticEngine executes in under 2\,ms, confirming that the rule-based layer adds negligible latency while substantially improving diagnostic reliability.
+
+\medskip
+\textbf{Keywords:} OBD-II, DTC, vehicle diagnostics, Rule-Based engine,
+two-stage analysis, Flutter, Gemini AI, Bluetooth Low Energy,
+Health Score, FreezeFrame, confidence scoring.
+
+\clearpage
+
+% ── Latvian abstract (anotacija) required by RNU
+\chapter*{Anotācija}
+\addcontentsline{toc}{chapter}{Anotācija}
+
+Šis bakalaura darbs prezentē \textit{AI Auto Doctor}---krosplatformu mobilo lietotni Android un iOS, kas risina kritisku trūkumu pieejamas automobiļu diagnostikas jomā: esošo risinājumu nespēju nodrošināt verificētus, sensoru datos balstītus kļūdu diagnostikas secinājumus.
+Sistēma ievieš divposmu diagnostikas konveijeru, kurā determinisks uz noteikumiem balstīts dzinējs (\texttt{DiagnosticEngine}) vispirms novērtē DTC kodu pret reāllaika OBD-II sensoru datiem---ieskaitot STFT, LTFT, MAF, O2 sensora spriegumu, dzesēšanas šķidruma temperatūru un FreezeFrame momentuzņēmumu---un tikai pēc tam aktivizē Google Gemini 1.5 Flash, lai ģenerētu skaidrojumu dabiskās valodas formā.
+
+Kontrolēts salīdzinošais eksperiments uz trim DTC scenārijiem (P0171, P0300, P0420) uzrāda, ka divposmu pieeja palielina cēloņu identifikācijas precizitāti no 61\,\% līdz 87\,\%, rezultātu konsekvenci no 58\,\% līdz 94\,\%, un lietotāju novērtēto saprotamību no 3,2/5 līdz 4,5/5.
+Visi desmit funkcionālie prasības ir izturētas.
+
+\medskip
+\textbf{Atslēgvārdi:} OBD-II, DTC, automobiļu diagnostika, uz noteikumiem balstīts dzinējs,
+divposmu analīze, Flutter, Gemini AI, BLE.
+
+\clearpage

@@ -1,0 +1,121 @@
+\chapter{Diagnostic Rule Specifications}
+\label{app:rules}
+
+This appendix provides the complete sensor threshold specifications for all five DTC rule groups implemented in \texttt{DiagnosticEngine}.
+Each rule group is presented as a decision table mapping sensor conditions to cause hypotheses with assigned probability weights.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{FuelSystemRules (P017x, P018x)}
+
+\begin{table}[!htbp]
+\centering
+\caption{FuelSystemRules complete decision table for DTC group P017x}
+\rowcolors{2}{tblalt}{white}
+\begin{tabularx}{\linewidth}{p{3.6cm} p{3.6cm} c X}
+\toprule
+\rowcolor{tblhdr}
+\color{white}\textbf{Sensor Condition} &
+\color{white}\textbf{Cause Hypothesis} &
+\color{white}\textbf{Prob.} &
+\color{white}\textbf{Evidence} \\
+\midrule
+STFT $> +20\,\%$ AND LTFT $> +15\,\%$ & Vacuum leak (unmetered air intake) & 85\,\% & Both corrections simultaneously at maximum ECU limit \\
+MAF $< 3.0$\,g/s at idle ($\text{RPM} < 900$, coolant $> 70$\,\textdegree C) & Contaminated MAF sensor & 70\,\% & MAF below expected idle airflow \\
+Fuel pressure $<$ OEM lower threshold & Weak fuel pump or clogged filter & 60\,\% & Low fuel pressure (when PID~0A available) \\
+O2 voltage $< 0.1$\,V for $\geq 3$ samples & Failed upstream O2 sensor & 50\,\% & O2 stuck lean: circuit or element fault \\
+STFT normal, LTFT elevated, RPM stable & Slow vacuum leak (PCV / crankcase) & 40\,\% & LTFT elevated without proportional STFT response \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{MisfireRules (P030x)}
+
+\begin{table}[!htbp]
+\centering
+\caption{MisfireRules complete decision table for DTC group P030x}
+\rowcolors{2}{tblalt}{white}
+\begin{tabularx}{\linewidth}{p{3.6cm} p{3.6cm} c X}
+\toprule
+\rowcolor{tblhdr}
+\color{white}\textbf{Sensor Condition} &
+\color{white}\textbf{Cause Hypothesis} &
+\color{white}\textbf{Prob.} &
+\color{white}\textbf{Evidence} \\
+\midrule
+Engine load $> 40\,\%$ at normal RPM with O2 oscillation & Ignition failure (spark plugs or coils) & 75\,\% & Load-dependent misfire without fuel anomaly \\
+MAF below expected range for current load & Fuel delivery issue (injector or pump) & 60\,\% & MAF low relative to engine load level \\
+P0300 concurrent with P0171 or P0174 & Vacuum leak causing lean-induced misfire & 55\,\% & Fuel-related code concurrent with misfire code \\
+Single-cylinder code only (P0301--P0308) & Mechanical fault (compression, valve, injector) & 40\,\% & Single-cylinder isolation implies mechanical origin \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{CoolantRules (P011x)}
+
+\begin{table}[!htbp]
+\centering
+\caption{CoolantRules complete decision table for DTC group P011x}
+\rowcolors{2}{tblalt}{white}
+\begin{tabularx}{\linewidth}{p{3.6cm} p{3.8cm} c X}
+\toprule
+\rowcolor{tblhdr}
+\color{white}\textbf{Sensor Condition} &
+\color{white}\textbf{Cause Hypothesis} &
+\color{white}\textbf{Prob.} &
+\color{white}\textbf{Evidence} \\
+\midrule
+Coolant $< 50$\,\textdegree C after $> 600$\,s runtime & Thermostat stuck open & 80\,\% & Engine never reaches operating temperature \\
+Coolant $> 120$\,\textdegree C (any runtime) & Engine overheating (cooling system failure) & 90\,\% & Critical overtemperature --- isOverheating = true \\
+Coolant rises, plateaus at 95--100\,\textdegree C & Partial thermostat failure or coolant loss & 65\,\% & Incomplete warm-up profile \\
+Coolant temperature erratic (large rapid jumps) & ECT sensor failure or air bubble in system & 55\,\% & Sensor noise incompatible with thermal inertia \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{OxygenSensorRules (P013x, P014x)}
+
+\begin{table}[!htbp]
+\centering
+\caption{OxygenSensorRules decision table for DTC groups P013x and P014x}
+\rowcolors{2}{tblalt}{white}
+\begin{tabularx}{\linewidth}{p{3.6cm} p{3.8cm} c X}
+\toprule
+\rowcolor{tblhdr}
+\color{white}\textbf{Sensor Condition} &
+\color{white}\textbf{Cause Hypothesis} &
+\color{white}\textbf{Prob.} &
+\color{white}\textbf{Evidence} \\
+\midrule
+O2 voltage $< 0.1$\,V with normal STFT/LTFT & Upstream O2 sensor element failure & 80\,\% & Persistent lean indication not reflected in fuel trims \\
+O2 response time $>$ 1.5\,s (sluggish switching) & O2 sensor degradation (aged element) & 70\,\% & Slow closed-loop correction response \\
+O2 heater circuit code concurrent & O2 sensor heater circuit open or short & 75\,\% & Heater fault code confirms electrical origin \\
+O2 stuck rich ($> 0.9$\,V persistently) & Fuel injector leak or O2 contamination & 60\,\% & Rich indication independent of fuel trims \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{CatalystRules (P042x, P043x)}
+
+\begin{table}[!htbp]
+\centering
+\caption{CatalystRules decision table for DTC groups P042x and P043x}
+\rowcolors{2}{tblalt}{white}
+\begin{tabularx}{\linewidth}{p{3.6cm} p{3.8cm} c X}
+\toprule
+\rowcolor{tblhdr}
+\color{white}\textbf{Sensor Condition} &
+\color{white}\textbf{Cause Hypothesis} &
+\color{white}\textbf{Prob.} &
+\color{white}\textbf{Evidence} \\
+\midrule
+Downstream O2 oscillation amplitude $<$ 0.2\,V (mirrors upstream) & Catalytic converter efficiency loss & 80\,\% & Downstream O2 switching like upstream O2 \\
+Upstream O2 normal, downstream flat $< 0.1$\,V & Downstream O2 sensor failure (lean stuck) & 70\,\% & Sensor fault rather than catalyst fault \\
+High exhaust backpressure (MAP elevated at idle) & Clogged catalytic converter & 65\,\% & Restricted exhaust indicated by MAP anomaly \\
+P0420 concurrent with P0300 & Catalyst damage from unburned fuel (misfires) & 75\,\% & Misfire-caused overheating damaging catalyst substrate \\
+\bottomrule
+\end{tabularx}
+\end{table}

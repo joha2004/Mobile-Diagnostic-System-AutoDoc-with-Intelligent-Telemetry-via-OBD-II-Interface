@@ -1,0 +1,405 @@
+\chapter{System Architecture and Design}
+\label{ch:architecture}
+
+This chapter presents the complete system architecture and technical design of AI Auto Doctor.
+Section~\ref{sec:overall_arch} describes the three-layer architectural model and component inventory.
+Section~\ref{sec:engine} specifies the Rule-Based \texttt{DiagnosticEngine} including rule groups, conditional logic, and confidence scoring.
+Section~\ref{sec:healthscore} defines the \texttt{HealthScoreCalculator} penalty schedule.
+Section~\ref{sec:ble} describes the BLE OBD-II communication stack.
+Section~\ref{sec:gemini} covers the Gemini AI integration and SQLite data layer.
+All design decisions are explicitly traced to requirements and findings from Chapter~\ref{ch:litreview}.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Overall Architecture and Design Decisions}
+\label{sec:overall_arch}
+
+\subsection{Three-Layer Architectural Pattern}
+
+AI Auto Doctor adopts a three-layer architecture~--- Presentation, Domain, and Data~--- implementing the Clean Architecture principle of Dependency Inversion~\cite{martin2017}: outer layers depend on inner layers, but not the reverse.
+This decision was motivated by three findings from Chapter~\ref{ch:litreview}:
+(i)~the diagnostic pipeline must be testable in isolation from BLE hardware (requires data source abstraction);
+(ii)~the \texttt{DiagnosticEngine} must be a pure, stateless, deterministic function (requires domain layer isolation);
+(iii)~the UI must react to both synchronous engine results ($<$2\,ms) and asynchronous AI responses (1--5\,s) without blocking (requires reactive state management).
+
+\figplaceholder{Three-layer system architecture of AI Auto Doctor with Riverpod provider dependency flow}{fig:arch_overview}
+
+\subsection{Component Inventory}
+
+Table~\ref{tab:components} inventories all sixteen system components across the three layers.
+
+\begin{table}[!htbp]
+\centering
+\caption{Three-layer architecture component inventory}
+\label{tab:components}
+\rowcolors{2}{tblalt}{white}
+\begin{tabularx}{0.98\linewidth}{p{2.4cm} p{3.6cm} X}
+\toprule
+\rowcolor{tblhdr}
+\color{white}\textbf{Layer} &
+\color{white}\textbf{Component} &
+\color{white}\textbf{Responsibility} \\
+\midrule
+Presentation & ConnectionScreen    & BLE device scanning, radar animation, connect / demo mode activation \\
+Presentation & DashboardScreen     & Real-time LiveData gauge rendering, Health Score circular indicator \\
+Presentation & ErrorsScreen        & DTC list with severity badges, FreezeFrame summary, tab badge counter \\
+Presentation & AnalysisScreen      & Two-stage pipeline trigger, DiagnosticResult and AiExplanation display \\
+Presentation & StepDiagnosisScreen & Sequential guided diagnostic steps with LinearProgressIndicator \\
+Presentation & HistoryScreen       & Drift SQLite session history stream, swipe-to-delete, batch clear \\
+Presentation & ServiceMapScreen    & flutter\_map 7.0.2 + OpenStreetMap, category filter chips \\
+Presentation & SettingsScreen      & Language toggle (EN/RU), Gemini API key input with obscure mode \\
+Presentation & Riverpod Providers  & 20 providers managing connection, LiveData, DTC, AI, and session state \\
+Domain       & DiagnosticEngine    & 5 DTC rule groups, probability ranking, confidence scoring, DriveAssessment \\
+Domain       & HealthScoreCalculator & Composite score 0--100: DTC severity + LiveData anomaly penalties \\
+Domain       & OBD Protocol        & PID code constants, AT command sequences, sensor threshold values \\
+Data         & RealObdSource       & ELM327 BLE via flutter\_blue\_plus: AT init, PID polling, Mode~03 DTC read \\
+Data         & DemoObdSource       & Stream.periodic 500\,ms; VW Passat 2019 1.4 TSI deterministic sensor profile \\
+Data         & GeminiService       & Gemini 1.5 Flash client: temperature 0.4, JSON mode, offline fallback \\
+Data         & AppDatabase         & Drift 2.22.1 SQLite ORM: DiagnosticSessions table, reactive watchAllSessions() \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Navigation and UI Architecture}
+
+Navigation between screens is implemented using an \texttt{IndexedStack} managed by \texttt{bottomNavIndexProvider} (a \texttt{StateProvider<int>}).
+Screen transitions are animated via \texttt{AnimatedSwitcher} with a 350\,ms duration and \texttt{Curves.easeOutBack} entry curve.
+The floating bottom navigation bar applies a glassmorphism effect (\texttt{BackdropFilter} blur~12, \texttt{BorderRadius}~24) consistent with Material Design~3 elevation semantics.
+
+The \texttt{DemoObdSource} generates a deterministic sensor profile for testing: base RPM 780\,$\pm$\,120 with noise, coolant temperature 87\,$\pm$\,8\,\textdegree C, STFT $+22.5\,\%$, LTFT $+15.3\,\%$, MAF 8.2\,g/s, O2 voltage 0.15\,V, and three pre-configured DTC codes (P0171 medium/confirmed, P0300 high/confirmed, P0420 medium/pending) with corresponding FreezeFrame snapshots.
+These values were chosen to exercise all diagnostic rule branches and to trigger the vacuum leak hypothesis in \texttt{FuelSystemRules} at 85\,\% probability.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Rule-Based DiagnosticEngine}
+\label{sec:engine}
+
+\subsection{Engine Interface and Processing Pipeline}
+
+The \texttt{DiagnosticEngine} is the central research contribution of this thesis.
+It exposes a single public method:
+
+\begin{lstlisting}[language=Java, caption={DiagnosticEngine public interface},
+                   label={lst:engine_interface}]
+DiagnosticResult analyze(
+  DtcCode      dtc,
+  LiveData     liveData,
+  FreezeFrame? freezeFrame
+)
+\end{lstlisting}
+
+Internally, five operations execute in sequence:
+\begin{enumerate}
+  \item \texttt{\_applyRules()} routes the DTC code by prefix to the appropriate rule class and retrieves \texttt{List<PossibleCause>} sorted by probability in descending order.
+  \item \texttt{\_calculateConfidence()} computes the confidence score $\conf$ based on available sensor completeness (defined in Section~\ref{subsec:confidence}).
+  \item \texttt{\_assessSeverity()} determines overall severity from DTC classification and LiveData anomaly flags.
+  \item \texttt{\_canDrive()} generates the \texttt{DriveAssessment} verdict from severity thresholds and the \texttt{isOverheating} flag.
+  \item \texttt{\_generateSteps()} produces an ordered \texttt{List<DiagnosticStep>} for the StepDiagnosisScreen.
+\end{enumerate}
+
+\figplaceholder{DiagnosticEngine rule routing and processing pipeline with data flow between stages}{fig:engine_pipeline}
+
+\subsection{DTC Rule Group Routing}
+
+Rule routing uses DTC code prefix matching as shown in Table~\ref{tab:rule_groups}.
+
+\begin{table}[!htbp]
+\centering
+\caption{DiagnosticEngine DTC rule group routing table}
+\label{tab:rule_groups}
+\rowcolors{2}{tblalt}{white}
+\begin{tabularx}{0.98\linewidth}{p{2.4cm} p{3.4cm} p{3.2cm} X}
+\toprule
+\rowcolor{tblhdr}
+\color{white}\textbf{DTC Prefix} &
+\color{white}\textbf{Rule Class} &
+\color{white}\textbf{Codes Covered} &
+\color{white}\textbf{Primary Sensor Conditions} \\
+\midrule
+P017           & FuelSystemRules    & P0171, P0172, P0174, P0175 & STFT, LTFT, MAF, O2 voltage, fuel pressure \\
+P030           & MisfireRules       & P0300--P0308               & RPM, engine load, O2 oscillation, MAF \\
+P013, P014     & OxygenSensorRules  & P0130--P0167               & O2 voltage, STFT response, heater circuit \\
+P011           & CoolantRules       & P0115--P0119               & Coolant temperature, engine runtime \\
+P042, P043     & CatalystRules      & P0420, P0430--P0432        & Downstream O2 oscillation pattern \\
+\textit{other} & GenericRules       & All unmatched codes        & Sensor circuit voltage, continuity \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{FuelSystemRules: Detailed Rule Specification}
+
+The \texttt{FuelSystemRules} class demonstrates the sensor-threshold evaluation pattern applied consistently across all rule groups.
+For DTC P0171, four conditional checks evaluate sensor thresholds in sequence.
+Each matched condition appends a \texttt{PossibleCause} to the output list:
+
+\begin{table}[!htbp]
+\centering
+\caption{FuelSystemRules rule specification for DTC P0171 (lean, Bank~1)}
+\label{tab:fuel_rules}
+\rowcolors{2}{tblalt}{white}
+\begin{tabularx}{0.98\linewidth}{p{3.8cm} p{4.0cm} c X}
+\toprule
+\rowcolor{tblhdr}
+\color{white}\textbf{Sensor Condition} &
+\color{white}\textbf{Cause Hypothesis} &
+\color{white}\textbf{Prob.} &
+\color{white}\textbf{Confirming Evidence} \\
+\midrule
+$\text{STFT} > +20\,\%$ \text{ AND } $\text{LTFT} > +15\,\%$ & Vacuum leak (unmetered air intake) & 85\,\% & Both corrections at simultaneous maximum \\
+MAF $< 3.0$ g/s at idle ($\text{RPM} < 900$, coolant $> 70$\,\textdegree C) & Contaminated MAF sensor & 70\,\% & MAF below expected range at idle \\
+Fuel pressure $<$ OEM lower threshold & Weak fuel pump or clogged filter & 60\,\% & Low fuel pressure when available \\
+O2 voltage $< 0.1$\,V for $\geq 3$ consecutive samples & Failed upstream O2 sensor & 50\,\% & O2 stuck lean: circuit or element fault \\
+STFT normal, LTFT elevated, RPM stable & Slow vacuum leak (PCV or crankcase) & 40\,\% & LTFT elevated without proportional STFT response \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The conditional evaluation follows this logic pseudocode:
+
+\begin{lstlisting}[caption={FuelSystemRules evaluation pseudocode for P0171}, label={lst:fuelrules}]
+if (stft > 20 && ltft > 15) {
+    causes.add(PossibleCause(
+        description: "Vacuum leak -- unmetered air intake",
+        probability: 0.85,
+        confirmedBySensors: ["STFT > 20%, LTFT > 15%"]
+    ));
+}
+if (maf < 3.0 && rpm < 900 && coolant > 70) {
+    causes.add(PossibleCause(
+        description: "Contaminated MAF sensor",
+        probability: 0.70,
+        confirmedBySensors: ["MAF below idle norm"]
+    ));
+}
+// ... (additional conditions)
+causes.sort((a, b) => b.probability.compareTo(a.probability));
+\end{lstlisting}
+
+\subsection{Confidence Score Calculation}
+\label{subsec:confidence}
+
+The confidence score $\conf$ quantifies the completeness of sensor evidence available for the diagnosis.
+It is defined as an additive function:
+
+\begin{equation}
+\label{eq:confidence}
+\conf = \min\!\Bigl(
+  C_{\mathrm{base}}
+  + \Delta_{\mathrm{running}}
+  + \Delta_{\mathrm{fuel}}
+  + \Delta_{\mathrm{air}}
+  + \Delta_{\mathrm{oxygen}}
+  + \Delta_{\mathrm{freeze}},\;
+  95
+\Bigr)
+\end{equation}
+
+\noindent where each term represents an evidence bonus:
+
+\begin{table}[!htbp]
+\centering
+\caption{Confidence score additive bonus schedule}
+\label{tab:confidence}
+\rowcolors{2}{tblalt}{white}
+\begin{tabularx}{0.95\linewidth}{p{3.2cm} c X}
+\toprule
+\rowcolor{tblhdr}
+\color{white}\textbf{Term in Eq.~\ref{eq:confidence}} &
+\color{white}\textbf{Value} &
+\color{white}\textbf{Condition and Rationale} \\
+\midrule
+$C_{\mathrm{base}}$           & 40\,\% & Baseline: DTC code retrieved, no sensor data \\
+$\Delta_{\mathrm{running}}$   & +15\,\% & RPM $> 0$: measurements from a running engine \\
+$\Delta_{\mathrm{fuel}}$      & +10\,\% & STFT and LTFT both available \\
+$\Delta_{\mathrm{air}}$       & +5\,\%  & MAF and MAP both available \\
+$\Delta_{\mathrm{oxygen}}$    & +5\,\%  & O2 sensor voltage available \\
+$\Delta_{\mathrm{freeze}}$    & +10\,\% & FreezeFrame snapshot available \\
+Maximum $\conf$               & 95\,\%  & Deliberate ceiling: mobile diagnostics cannot replace physical inspection \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The ceiling of 95\,\% is an intentional design constraint acknowledging that no mobile diagnostic system can achieve certainty without direct mechanical inspection.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{HealthScoreCalculator}
+\label{sec:healthscore}
+
+The \texttt{HealthScoreCalculator} provides an integrated vehicle health assessment on a 0--100 scale.
+Starting from a baseline of~100, it applies sequential weighted deductions for all active fault conditions and sensor anomalies.
+The score is recomputed on every LiveData stream emission via the reactive \texttt{healthScoreProvider} and is floored at~0.
+
+The formal definition is:
+
+\begin{equation}
+\label{eq:healthscore}
+H = \max\!\left(100 - \sum_{i} p_i \cdot \mathbb{1}[\text{condition}_i\text{ true}],\; 0\right)
+\end{equation}
+
+\noindent where $p_i$ is the penalty weight for condition~$i$ and $\mathbb{1}[\cdot]$ is the indicator function.
+
+\begin{table}[!htbp]
+\centering
+\caption{HealthScoreCalculator penalty schedule}
+\label{tab:healthscore}
+\rowcolors{2}{tblalt}{white}
+\begin{tabularx}{0.95\linewidth}{p{5.0cm} c X}
+\toprule
+\rowcolor{tblhdr}
+\color{white}\textbf{Condition} &
+\color{white}\textbf{Penalty $p_i$} &
+\color{white}\textbf{Threshold / Logic} \\
+\midrule
+DTC critical severity         & $-25$ & Per active critical-severity DTC \\
+DTC high severity             & $-15$ & Per active high-severity DTC \\
+DTC medium severity           & $-8$  & Per active medium-severity DTC \\
+DTC low severity              & $-3$  & Per active low-severity DTC \\
+Engine overheating            & $-20$ & $\text{coolant} > 105$\,\textdegree C (isOverheating flag) \\
+Elevated coolant temperature  & $-5$  & $95 < \text{coolant} \leq 105$\,\textdegree C \\
+Severe STFT anomaly           & $-10$ & $|\text{STFT}| > 25\,\%$ \\
+Moderate STFT anomaly         & $-5$  & $15\,\% < |\text{STFT}| \leq 25\,\%$ \\
+Severe LTFT anomaly           & $-10$ & $|\text{LTFT}| > 20\,\%$ \\
+Moderate LTFT anomaly         & $-5$  & $12\,\% < |\text{LTFT}| \leq 20\,\%$ \\
+Low battery voltage           & $-10$ & Battery $< 12.0$\,V \\
+Marginal battery voltage      & $-3$  & $12.0 \leq \text{Battery} < 13.0$\,V \\
+Unstable idle RPM             & $-5$  & Speed $<5$\,km/h AND ($\text{RPM} < 500$ OR $\text{RPM} > 1200$) \\
+Recurring fault codes         & $-3$  & DTC present in previous session history \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Score interpretation bands: 90--100 (Excellent), 75--89 (Good), 50--74 (Needs Attention), 25--49 (Issues Found), 0--24 (Critical).
+
+The \texttt{\_canDrive()} method in \texttt{DiagnosticEngine} generates the \texttt{DriveAssessment} verdict deterministically:
+\begin{itemize}
+  \item Critical severity \textbf{or} \texttt{isOverheating} $\Rightarrow$ \texttt{DriveAssessment.stopImmediately}
+  \item High severity $\Rightarrow$ \texttt{DriveAssessment.driveWithCaution}
+  \item Medium severity $\Rightarrow$ \texttt{DriveAssessment.driveSafely} (with caveat note)
+  \item Low severity $\Rightarrow$ \texttt{DriveAssessment.driveSafely}
+\end{itemize}
+
+\figplaceholder{HealthScore calculation logic as a state machine diagram}{fig:healthscore_state}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{BLE OBD-II Communication Stack}
+\label{sec:ble}
+
+\subsection{Connection and Initialisation}
+
+\texttt{RealObdSource} implements the complete ELM327 BLE communication protocol using \texttt{flutter\_blue\_plus}~1.35.3.
+It is defined as an implementation of the abstract \texttt{ObdDataSource} class~--- applying the Dependency Inversion Principle~\cite{martin2017}~--- allowing \texttt{DemoObdSource} to substitute without any changes to the Domain or Presentation layers.
+
+The \texttt{connect()} method performs the following operations:
+\begin{enumerate}
+  \item Probe BLE Service UUIDs \texttt{FFF0}, \texttt{FFE0}, and \texttt{18F0} to identify the writable and notifiable GATT characteristics.
+  \item Request MTU 512 bytes (Android only) via \texttt{BluetoothGatt.requestMtu()}.
+  \item Enable BLE notifications on the read characteristic via \texttt{setNotifyValue(true)}.
+  \item Execute the AT initialisation sequence (Section~\ref{sec:obd}) with a 2\,000\,ms \texttt{Completer} timeout per command.
+  \item Update \texttt{connectionStatusProvider} to \texttt{ConnectionStatus.connected}.
+  \item Start the PID polling \texttt{Timer.periodic}.
+\end{enumerate}
+
+\figplaceholder{BLE ELM327 communication sequence diagram (UML): connect, MTU negotiate, AT init, PID poll, DTC scan}{fig:ble_sequence}
+
+\subsection{PID Polling Architecture}
+
+The PID polling loop executes every 1\,000\,ms.
+Response parsing applies the corresponding formula from Table~\ref{tab:pids}.
+The current implementation polls three PIDs (RPM, Speed, Coolant) and is architected for straightforward extension to all fourteen LiveData parameters via the \texttt{OBD Protocol} constants map.
+
+\subsection{Mode~03 DTC Reading}
+
+DTC scanning transmits the ASCII command \texttt{"03\textbackslash r"} and parses the multi-frame response format \texttt{"43 XX XX XX XX XX"} (up to three DTCs per frame, with ISO~15765-4 continuation frames for vehicles with more stored codes).
+The two DTC bytes per code pair are decoded into five-character SAE codes, cross-referenced against the embedded \texttt{DtcDatabase} (300+ codes, bilingual EN/RU descriptions), and returned as \texttt{List<DtcCode>} with severity, status (Confirmed / Pending / Historical), and a subsequent Mode~02 FreezeFrame request appended.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Gemini AI Integration and Data Layer}
+\label{sec:gemini}
+
+\subsection{Gemini AI Service Configuration}
+
+\texttt{GeminiService} implements Stage~2 of the diagnostic pipeline using the \texttt{google\_generative\_ai~0.4.7} Dart package.
+The model is configured with:
+\begin{itemize}
+  \item Model: \texttt{gemini-1.5-flash}
+  \item Temperature: 0.4 (empirically determined; below 0.3 produces terse responses; above 0.6 introduces causes unsupported by sensor evidence)
+  \item \texttt{responseMimeType}: \texttt{"application/json"}
+\end{itemize}
+
+The API key is stored in \texttt{SharedPreferences} under key \texttt{"gemini\_api\_key"}, entered by the user in \texttt{SettingsScreen}, and is never embedded in the application binary.
+
+\subsection{Context Construction and Prompt Design}
+
+The user prompt is constructed by \texttt{DiagnosticResult.toAiContext()}, which serialises the following evidence into a structured JSON string:
+
+\begin{itemize}
+  \item \texttt{dtcCode}: the five-character fault code
+  \item \texttt{topCauses}: top-3 \texttt{PossibleCause} objects with probability values and \texttt{confirmedBySensors} evidence arrays
+  \item \texttt{confidencePercent}: the $\conf$ value from Equation~\ref{eq:confidence}
+  \item \texttt{overallSeverity}: fault severity classification
+  \item \texttt{canDriveVerdict}: \texttt{DriveAssessment} enum value
+  \item \texttt{liveData}: full 14-parameter LiveData map
+  \item \texttt{freezeFrame}: FreezeFrame snapshot map (when available)
+\end{itemize}
+
+The system prompt---generated in the active interface language (English or Russian)---instructs the model to:
+(a)~act as an automotive diagnostic expert;
+(b)~base its explanation exclusively on the provided sensor evidence;
+(c)~not introduce causes contradicting the \texttt{confirmedBySensors} evidence.
+
+The JSON response schema requires eight fields: \texttt{problem}, \texttt{symptoms}, \texttt{danger\_level}, \texttt{can\_drive}, \texttt{causes[]}, \texttt{repair\_cost}, \texttt{specialist}, \texttt{confidence}.
+
+\subsection{Offline Fallback Mechanism}
+
+When the Gemini API call fails (network unavailability, absent API key, or quota exhaustion), \texttt{AiExplanation.offline()} is triggered.
+This method constructs a locally generated explanation from the top \texttt{PossibleCause} description in \texttt{DtcDatabase}, marks the result with \texttt{isOffline: true}, and displays an ``Offline Mode'' indicator on \texttt{AnalysisScreen}.
+The offline fallback ensures that Stage~1 (Rule-Based) results remain available and actionable under all network conditions.
+
+\subsection{SQLite Persistence with Drift ORM}
+
+Session history is persisted using Drift~2.22.1, a type-safe SQLite ORM that generates strongly typed DAO~(Data Access Object) methods from table schema definitions.
+The database file is created in the application documents directory via \texttt{getApplicationDocumentsDirectory()} using \texttt{NativeDatabase.createInBackground()}.
+
+\begin{table}[!htbp]
+\centering
+\caption{DiagnosticSessions SQLite table schema (Drift ORM)}
+\label{tab:schema}
+\rowcolors{2}{tblalt}{white}
+\begin{tabularx}{0.95\linewidth}{p{2.8cm} p{3.4cm} c X}
+\toprule
+\rowcolor{tblhdr}
+\color{white}\textbf{Column} &
+\color{white}\textbf{Type} &
+\color{white}\textbf{Nullable} &
+\color{white}\textbf{Description} \\
+\midrule
+\texttt{id}           & INTEGER (autoIncrement) & No  & Primary key \\
+\texttt{timestamp}    & DATETIME                & No  & ISO~8601 timestamp of the diagnostic session \\
+\texttt{healthScore}  & INTEGER                 & No  & Health Score (0--100) at session creation time \\
+\texttt{dtcCodesJson} & TEXT                    & No  & JSON array of active DTC code strings \\
+\texttt{severity}     & TEXT                    & Yes & Overall severity: low / medium / high / critical \\
+\texttt{aiSummary}    & TEXT                    & Yes & First sentence of \texttt{AiExplanation.problem} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The \texttt{watchAllSessions()} method returns \texttt{Stream<List<DiagnosticSession>>}, to which \texttt{HistoryScreen} subscribes via a Riverpod \texttt{StreamProvider}.
+Drift implements reactive queries using SQLite WAL~(Write-Ahead Logging) mode; any \texttt{insertSession()} or \texttt{deleteSession()} call automatically emits an updated list on the stream, causing the \texttt{HistoryScreen} to rebuild without explicit refresh logic.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Chapter Summary}
+\label{sec:ch2summary}
+
+This chapter presented the complete system architecture and technical design of AI Auto Doctor.
+
+Section~\ref{sec:overall_arch} described the three-layer architecture and its 16-component inventory (Table~\ref{tab:components}).
+The \texttt{DemoObdSource} sensor profile was specified to ensure reproducible testing conditions.
+
+Section~\ref{sec:engine} specified the \texttt{DiagnosticEngine} in full detail: DTC prefix routing across five rule groups (Table~\ref{tab:rule_groups}), the four-condition \texttt{FuelSystemRules} decision table (Table~\ref{tab:fuel_rules}), and the formal confidence score calculation (Equation~\ref{eq:confidence}, Table~\ref{tab:confidence}) with a deliberate 95\,\% ceiling.
+
+Section~\ref{sec:healthscore} defined the \texttt{HealthScoreCalculator} with a 14-condition penalty schedule (Table~\ref{tab:healthscore}, Equation~\ref{eq:healthscore}) and the deterministic \texttt{DriveAssessment} logic that provides the ``Can Drive?'' verdict without AI involvement.
+
+Section~\ref{sec:ble} described the BLE OBD-II communication stack including the ELM327 AT initialisation sequence, three-UUID adapter detection, PID polling architecture, and Mode~03 DTC response parsing.
+
+Section~\ref{sec:gemini} specified the Gemini~1.5~Flash integration parameters, the \texttt{DiagnosticResult.toAiContext()} context serialisation, the offline fallback mechanism, and the Drift SQLite data model (Table~\ref{tab:schema}).
+All design decisions were explicitly traced to Chapter~\ref{ch:litreview} findings.
+
+\clearpage
