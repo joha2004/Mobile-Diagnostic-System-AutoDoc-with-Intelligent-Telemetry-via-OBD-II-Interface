@@ -1,0 +1,331 @@
+// Localization support for AI Auto Doctor
+// Supports Russian (ru) and English (en)
+
+class AppLocale {
+  final String languageCode;
+
+  AppLocale(this.languageCode);
+
+  static AppLocale of(String code) => AppLocale(code);
+
+  String get(String key) {
+    final map = languageCode == 'ru' ? _ru : _en;
+    return map[key] ?? _en[key] ?? key;
+  }
+
+  // =====================================================
+  // RUSSIAN TRANSLATIONS
+  // =====================================================
+  static const Map<String, String> _ru = {
+    // Navigation
+    'nav_connection': 'Подключение',
+    'nav_dashboard': 'Панель',
+    'nav_errors': 'Ошибки',
+    'nav_history': 'История',
+    'nav_settings': 'Настройки',
+
+    // Connection Screen
+    'connection_title': 'Подключение к OBD-II',
+    'connection_scanning': 'Поиск устройств...',
+    'connection_connect': 'Подключить',
+    'connection_disconnect': 'Отключить',
+    'connection_connected': 'Подключено',
+    'connection_disconnected': 'Отключено',
+    'connection_connecting': 'Подключение...',
+    'connection_failed': 'Ошибка подключения',
+    'connection_retry': 'Повторить',
+    'connection_demo_mode': 'Демо режим',
+    'connection_demo_desc': 'Тестирование без адаптера',
+    'connection_bt_off': 'Bluetooth выключен',
+    'connection_bt_turn_on': 'Включите Bluetooth',
+    'connection_no_devices': 'Устройства не найдены',
+    'connection_searching': 'Идёт поиск...',
+    'connection_signal': 'Сигнал',
+    'connection_device_type': 'Тип',
+    'connection_ble': 'BLE',
+    'connection_classic': 'Classic',
+
+    // Dashboard
+    'dashboard_title': 'Панель управления',
+    'dashboard_health_score': 'Здоровье авто',
+    'dashboard_rpm': 'Обороты',
+    'dashboard_speed': 'Скорость',
+    'dashboard_engine_load': 'Нагрузка двигателя',
+    'dashboard_coolant_temp': 'Температура ОЖ',
+    'dashboard_intake_temp': 'Температура впуска',
+    'dashboard_maf': 'MAF расход воздуха',
+    'dashboard_map_pressure': 'MAP давление',
+    'dashboard_stft': 'Корр. топлива (кратк.)',
+    'dashboard_ltft': 'Корр. топлива (долг.)',
+    'dashboard_o2_voltage': 'Датчик O2',
+    'dashboard_fuel_pressure': 'Давление топлива',
+    'dashboard_vehicle': 'Автомобиль',
+    'dashboard_live_data': 'Данные в реальном времени',
+    'dashboard_no_connection': 'Нет подключения',
+    'dashboard_run_diagnostic': 'Запустить диагностику',
+    'dashboard_km_h': 'км/ч',
+    'dashboard_rpm_unit': 'об/мин',
+    'dashboard_celsius': '°C',
+    'dashboard_percent': '%',
+    'dashboard_volts': 'В',
+
+    // Errors
+    'errors_title': 'Коды ошибок (DTC)',
+    'errors_no_errors': 'Ошибок не обнаружено!',
+    'errors_no_errors_desc': 'Автомобиль в порядке',
+    'errors_count': 'Найдено ошибок',
+    'errors_clear': 'Очистить ошибки',
+    'errors_clear_confirm': 'Вы уверены, что хотите очистить все ошибки?',
+    'errors_clear_warning': 'Это сбросит Check Engine. Ошибка может вернуться, если проблема не устранена.',
+    'errors_analyze': 'Анализировать',
+    'errors_pending': 'Ожидающие',
+    'errors_confirmed': 'Подтверждённые',
+    'errors_freeze_frame': 'Freeze Frame',
+    'errors_severity': 'Серьёзность',
+    'errors_scan': 'Сканировать',
+    'errors_scanning': 'Сканирование...',
+
+    // Analysis
+    'analysis_title': 'Анализ ошибки',
+    'analysis_problem': '📌 Проблема',
+    'analysis_symptoms': '🔍 Симптомы',
+    'analysis_danger': '⚠️ Опасность',
+    'analysis_can_drive': '🚗 Можно ли ехать',
+    'analysis_causes': '🛠 Возможные причины',
+    'analysis_repair_cost': '💸 Примерная стоимость ремонта',
+    'analysis_specialist': '👨‍🔧 Тип специалиста',
+    'analysis_confidence': '📊 Уверенность',
+    'analysis_sensor_data': 'Данные датчиков',
+    'analysis_ai_loading': 'AI анализирует...',
+    'analysis_probability': 'Вероятность',
+    'analysis_yes': 'Да',
+    'analysis_no': 'Нет',
+    'analysis_careful': 'Да, но аккуратно',
+    'analysis_danger_low': 'Низкая',
+    'analysis_danger_medium': 'Средняя',
+    'analysis_danger_high': 'Высокая',
+
+    // Step Diagnosis
+    'step_title': 'Пошаговая диагностика',
+    'step_check': 'Проверить',
+    'step_done': 'Выполнено',
+    'step_skip': 'Пропустить',
+    'step_next': 'Далее',
+    'step_previous': 'Назад',
+    'step_finish': 'Завершить',
+    'step_progress': 'Прогресс',
+    'step_air_filter': 'Проверить воздушный фильтр',
+    'step_fuel_filter': 'Проверить топливный фильтр',
+    'step_spark_plugs': 'Проверить свечи зажигания',
+    'step_vacuum_hoses': 'Проверить вакуумные шланги',
+    'step_sensors': 'Проверить датчики',
+
+    // History
+    'history_title': 'История диагностики',
+    'history_empty': 'История пуста',
+    'history_empty_desc': 'Проведите первую диагностику',
+    'history_date': 'Дата',
+    'history_errors_found': 'Найдено ошибок',
+    'history_health': 'Здоровье',
+    'history_recurring': 'Повторяющаяся проблема',
+    'history_details': 'Подробнее',
+    'history_trends': 'Тренды',
+
+    // Service Map
+    'map_title': 'Карта сервисов',
+    'map_nearest': 'Ближайшие СТО',
+    'map_electrician': 'Автоэлектрик',
+    'map_engine_specialist': 'Моторист',
+    'map_diagnostics': 'Диагностика',
+    'map_all': 'Все',
+    'map_distance': 'Расстояние',
+    'map_open_map': 'Открыть на карте',
+    'map_loading': 'Загрузка карты...',
+
+    // Settings
+    'settings_title': 'Настройки',
+    'settings_language': 'Язык',
+    'settings_russian': 'Русский',
+    'settings_english': 'English',
+    'settings_demo_mode': 'Демо режим',
+    'settings_about': 'О приложении',
+    'settings_version': 'Версия',
+    'settings_api_key': 'API ключ OpenAI',
+    'settings_api_key_hint': 'Введите ваш ключ',
+    'settings_api_key_saved': 'Ключ сохранён',
+    'settings_clear_history': 'Очистить историю',
+    'settings_theme': 'Тема',
+
+    // General
+    'cancel': 'Отмена',
+    'ok': 'ОК',
+    'save': 'Сохранить',
+    'delete': 'Удалить',
+    'close': 'Закрыть',
+    'loading': 'Загрузка...',
+    'error': 'Ошибка',
+    'success': 'Успешно',
+    'warning': 'Предупреждение',
+    'no_internet': 'Нет интернета',
+    'offline_mode': 'Оффлайн режим',
+    'app_name': 'AI Auto Doctor',
+  };
+
+  // =====================================================
+  // ENGLISH TRANSLATIONS
+  // =====================================================
+  static const Map<String, String> _en = {
+    // Navigation
+    'nav_connection': 'Connection',
+    'nav_dashboard': 'Dashboard',
+    'nav_errors': 'Errors',
+    'nav_history': 'History',
+    'nav_settings': 'Settings',
+
+    // Connection Screen
+    'connection_title': 'Connect to OBD-II',
+    'connection_scanning': 'Scanning for devices...',
+    'connection_connect': 'Connect',
+    'connection_disconnect': 'Disconnect',
+    'connection_connected': 'Connected',
+    'connection_disconnected': 'Disconnected',
+    'connection_connecting': 'Connecting...',
+    'connection_failed': 'Connection failed',
+    'connection_retry': 'Retry',
+    'connection_demo_mode': 'Demo Mode',
+    'connection_demo_desc': 'Test without adapter',
+    'connection_bt_off': 'Bluetooth is off',
+    'connection_bt_turn_on': 'Turn on Bluetooth',
+    'connection_no_devices': 'No devices found',
+    'connection_searching': 'Searching...',
+    'connection_signal': 'Signal',
+    'connection_device_type': 'Type',
+    'connection_ble': 'BLE',
+    'connection_classic': 'Classic',
+
+    // Dashboard
+    'dashboard_title': 'Dashboard',
+    'dashboard_health_score': 'Vehicle Health',
+    'dashboard_rpm': 'RPM',
+    'dashboard_speed': 'Speed',
+    'dashboard_engine_load': 'Engine Load',
+    'dashboard_coolant_temp': 'Coolant Temp',
+    'dashboard_intake_temp': 'Intake Temp',
+    'dashboard_maf': 'MAF Air Flow',
+    'dashboard_map_pressure': 'MAP Pressure',
+    'dashboard_stft': 'Short Term Fuel Trim',
+    'dashboard_ltft': 'Long Term Fuel Trim',
+    'dashboard_o2_voltage': 'O2 Sensor',
+    'dashboard_fuel_pressure': 'Fuel Pressure',
+    'dashboard_vehicle': 'Vehicle',
+    'dashboard_live_data': 'Live Data',
+    'dashboard_no_connection': 'No Connection',
+    'dashboard_run_diagnostic': 'Run Diagnostic',
+    'dashboard_km_h': 'km/h',
+    'dashboard_rpm_unit': 'rpm',
+    'dashboard_celsius': '°C',
+    'dashboard_percent': '%',
+    'dashboard_volts': 'V',
+
+    // Errors
+    'errors_title': 'Diagnostic Trouble Codes',
+    'errors_no_errors': 'No errors found!',
+    'errors_no_errors_desc': 'Vehicle is in good condition',
+    'errors_count': 'Errors found',
+    'errors_clear': 'Clear Errors',
+    'errors_clear_confirm': 'Are you sure you want to clear all errors?',
+    'errors_clear_warning': 'This will reset Check Engine. Error may return if the problem is not fixed.',
+    'errors_analyze': 'Analyze',
+    'errors_pending': 'Pending',
+    'errors_confirmed': 'Confirmed',
+    'errors_freeze_frame': 'Freeze Frame',
+    'errors_severity': 'Severity',
+    'errors_scan': 'Scan',
+    'errors_scanning': 'Scanning...',
+
+    // Analysis
+    'analysis_title': 'Error Analysis',
+    'analysis_problem': '📌 Problem',
+    'analysis_symptoms': '🔍 Symptoms',
+    'analysis_danger': '⚠️ Danger Level',
+    'analysis_can_drive': '🚗 Can You Drive',
+    'analysis_causes': '🛠 Possible Causes',
+    'analysis_repair_cost': '💸 Estimated Repair Cost',
+    'analysis_specialist': '👨‍🔧 Specialist Type',
+    'analysis_confidence': '📊 Confidence',
+    'analysis_sensor_data': 'Sensor Data',
+    'analysis_ai_loading': 'AI analyzing...',
+    'analysis_probability': 'Probability',
+    'analysis_yes': 'Yes',
+    'analysis_no': 'No',
+    'analysis_careful': 'Yes, but carefully',
+    'analysis_danger_low': 'Low',
+    'analysis_danger_medium': 'Medium',
+    'analysis_danger_high': 'High',
+
+    // Step Diagnosis
+    'step_title': 'Step-by-Step Diagnosis',
+    'step_check': 'Check',
+    'step_done': 'Done',
+    'step_skip': 'Skip',
+    'step_next': 'Next',
+    'step_previous': 'Back',
+    'step_finish': 'Finish',
+    'step_progress': 'Progress',
+    'step_air_filter': 'Check air filter',
+    'step_fuel_filter': 'Check fuel filter',
+    'step_spark_plugs': 'Check spark plugs',
+    'step_vacuum_hoses': 'Check vacuum hoses',
+    'step_sensors': 'Check sensors',
+
+    // History
+    'history_title': 'Diagnostic History',
+    'history_empty': 'History is empty',
+    'history_empty_desc': 'Run your first diagnostic',
+    'history_date': 'Date',
+    'history_errors_found': 'Errors found',
+    'history_health': 'Health',
+    'history_recurring': 'Recurring issue',
+    'history_details': 'Details',
+    'history_trends': 'Trends',
+
+    // Service Map
+    'map_title': 'Service Map',
+    'map_nearest': 'Nearest Service Centers',
+    'map_electrician': 'Auto Electrician',
+    'map_engine_specialist': 'Engine Specialist',
+    'map_diagnostics': 'Diagnostics',
+    'map_all': 'All',
+    'map_distance': 'Distance',
+    'map_open_map': 'Open in map',
+    'map_loading': 'Loading map...',
+
+    // Settings
+    'settings_title': 'Settings',
+    'settings_language': 'Language',
+    'settings_russian': 'Русский',
+    'settings_english': 'English',
+    'settings_demo_mode': 'Demo Mode',
+    'settings_about': 'About',
+    'settings_version': 'Version',
+    'settings_api_key': 'OpenAI API Key',
+    'settings_api_key_hint': 'Enter your key',
+    'settings_api_key_saved': 'Key saved',
+    'settings_clear_history': 'Clear History',
+    'settings_theme': 'Theme',
+
+    // General
+    'cancel': 'Cancel',
+    'ok': 'OK',
+    'save': 'Save',
+    'delete': 'Delete',
+    'close': 'Close',
+    'loading': 'Loading...',
+    'error': 'Error',
+    'success': 'Success',
+    'warning': 'Warning',
+    'no_internet': 'No Internet',
+    'offline_mode': 'Offline Mode',
+    'app_name': 'AI Auto Doctor',
+  };
+}

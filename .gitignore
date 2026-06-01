@@ -1,0 +1,37 @@
+﻿# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+
+# Build
+build/
+**/build/
+
+# Android Studio
+.idea/
+.gradle/
+local.properties
+*.iml
+
+# Secrets
+.env
+.env.*
+google-services.json
+**/google-services.json
+secrets.properties
+apikey.properties
+keys.properties
+
+# Signing
+*.jks
+*.keystore
+
+# Generated
+.cxx/
+.externalNativeBuild/
+captures/
+
+# OS
+Thumbs.db
+.DS_Store
